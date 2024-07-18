@@ -3,6 +3,7 @@ import logging
 from binascii import unhexlify
 from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING, Any, Iterator
+import asyncio
 
 import jwt
 from eth_typing import URI
@@ -18,7 +19,7 @@ from sw_utils.decorators import can_be_retried_aiohttp_error, retry_aiohttp_erro
 logger = logging.getLogger(__name__)
 
 
-JWT_EXPIRATION_HOURS = 8760
+JWT_EXPIRATION_SECONDS = 45
 
 
 if TYPE_CHECKING:
@@ -59,7 +60,7 @@ class ExtendedAsyncHTTPProvider(AsyncHTTPProvider):
             else:
                 protocol = host_uri.split('://')[0]
                 raise ProtocolNotSupported(f'Protocol "{protocol}" is not supported.')
-
+        
         super().__init__()
 
     async def make_request(self, method: RPCEndpoint, params: Any) -> RPCResponse:
@@ -131,6 +132,15 @@ def get_execution_client(
         headers['Authorization'] = f'Bearer {token}'
         logger.debug('JWT Authentication enabled')
 
+        async def refresh_jwt_token():
+            while True:
+                await asyncio.sleep(JWT_EXPIRATION_SECONDS)
+                new_token = _create_jwt_auth_token(jwt_secret)
+                headers['Authorization'] = f'Bearer {new_token}'
+                logger.debug('JWT token refreshed')
+
+        asyncio.create_task(refresh_jwt_token())
+
     provider = ExtendedAsyncHTTPProvider(
         endpoint_urls=endpoints,
         request_kwargs={'timeout': timeout, 'headers': headers},
@@ -138,7 +148,7 @@ def get_execution_client(
     )
     client = AsyncWeb3(
         provider,
-        modules={'eth': (AsyncEth,), 'net': AsyncNet},
+        modules={'eth': (AsyncEth,), 'net': (AsyncNet,)},
     )
 
     if is_poa:
@@ -168,11 +178,12 @@ def _create_jwt_auth_token(jwt_secret: str) -> str:
     except Exception as e:
         raise ValueError('Invalid JWT secret format') from e
 
-    expiration_time = datetime.now(timezone.utc) + timedelta(hours=JWT_EXPIRATION_HOURS)
+    now = datetime.now(timezone.utc)
+    expiration_time = now + timedelta(seconds=JWT_EXPIRATION_SECONDS)
     claims = {
         'exp': expiration_time,
-        'iat': datetime.now(timezone.utc),
-        'nbf': datetime.now(timezone.utc),
+        'iat': now,
+        'nbf': now,
     }
 
     try:
