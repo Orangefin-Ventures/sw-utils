@@ -19,7 +19,7 @@ from sw_utils.decorators import can_be_retried_aiohttp_error, retry_aiohttp_erro
 logger = logging.getLogger(__name__)
 
 
-JWT_EXPIRATION_SECONDS = 45
+JWT_EXPIRATION_SECONDS = 30
 
 
 if TYPE_CHECKING:
