@@ -179,7 +179,7 @@ def _create_jwt_auth_token(jwt_secret: str) -> str:
         raise ValueError('Invalid JWT secret format') from e
 
     now = datetime.now(timezone.utc)
-    expiration_time = now + timedelta(seconds=60)
+    expiration_time = now + timedelta(seconds=JWT_EXPIRATION_SECONDS*2)
     claims = {
         'exp': expiration_time,
         'iat': now,
